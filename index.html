@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forensic Q bank</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef2f6;--card:#fff;--ink:#14213d;--mute:#5b6b82;--line:#d9e1ea;--acc:#0f766e;--acc-d:#0b5a54;--ok:#15803d;--okbg:#e7f6ec;--bad:#b91c1c;--badbg:#fdeaea}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.55;min-height:100vh;padding:24px 16px 48px}
+.wrap{max-width:720px;margin:0 auto}
+header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:20px}
+h1{font-family:Fraunces,Georgia,serif;font-size:2rem;margin:0;letter-spacing:-.5px}
+.count{color:var(--mute);font-weight:500;font-size:.95rem}
+.bar{height:6px;background:var(--line);border-radius:99px;overflow:hidden;margin-bottom:20px}
+.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .4s}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px;box-shadow:0 8px 30px rgba(20,33,61,.06)}
+.q{font-family:Fraunces,Georgia,serif;font-size:1.35rem;line-height:1.4;margin:0 0 22px;font-weight:600}
+.opts{display:grid;gap:10px}
+.opt{display:flex;gap:14px;align-items:center;text-align:left;width:100%;font:inherit;color:inherit;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:13px 16px;cursor:pointer;transition:border-color .15s,background .15s}
+.opt:hover:not(:disabled){border-color:var(--acc);background:#f5fbfa}
+.opt b{flex:none;width:30px;height:30px;border-radius:8px;background:var(--bg);display:grid;place-items:center;font-size:.85rem;color:var(--mute)}
+.opt.ok{border-color:var(--ok);background:var(--okbg)}.opt.ok b{background:var(--ok);color:#fff}
+.opt.bad{border-color:var(--bad);background:var(--badbg)}.opt.bad b{background:var(--bad);color:#fff}
+.opt:disabled{cursor:default}
+button:focus-visible{outline:3px solid #5eead4;outline-offset:2px}
+.fb{margin-top:18px;font-weight:600;min-height:1.5em}
+.fb.ok{color:var(--ok)}.fb.bad{color:var(--bad)}
+.btn{font:inherit;font-weight:600;background:var(--acc);color:#fff;border:0;border-radius:12px;padding:12px 26px;cursor:pointer}
+.btn:hover{background:var(--acc-d)}
+.btn.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+.btn.ghost:hover{background:var(--bg)}
+.row{display:flex;justify-content:flex-end;margin-top:18px}
+.hide{display:none!important}
+.score{text-align:center;padding:10px 0 24px}
+.score .n{font-family:Fraunces,Georgia,serif;font-size:4.2rem;font-weight:700;line-height:1}
+.score p{color:var(--mute);margin:8px 0 0}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 16px}
+.filters .btn{padding:8px 16px;font-size:.9rem}
+.filters .btn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.item{border:1px solid var(--line);border-left:5px solid var(--ok);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:#fff}
+.item.bad{border-left-color:var(--bad)}
+.item h3{font-size:1rem;margin:0 0 8px;font-weight:600}
+.item div{font-size:.93rem}
+.tag-ok{color:var(--ok);font-weight:600}.tag-bad{color:var(--bad);font-weight:600}
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:50}
+.score .msg{font-family:Fraunces,Georgia,serif;font-size:1.35rem;color:var(--ink);margin-top:14px}
+.score .n.pop{animation:pop .6s cubic-bezier(.2,1.4,.4,1)}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+@media(max-width:520px){.card{padding:20px}.q{font-size:1.18rem}h1{font-size:1.6rem}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="fx"></canvas>
+<div class="wrap">
+  <header><h1>Forensic Q bank</h1><span class="count" id="count"></span></header>
+  <div class="bar" id="barWrap"><i id="bar"></i></div>
+
+  <section class="card" id="quiz">
+    <p class="q" id="q"></p>
+    <div class="opts" id="opts"></div>
+    <div class="fb" id="fb"></div>
+    <div class="row"><button class="btn hide" id="next"></button></div>
+  </section>
+
+  <section class="card hide" id="result">
+    <div class="score"><div class="n" id="scoreN"></div><p id="scoreP"></p><div class="msg" id="msg"></div></div>
+    <div class="filters" id="filters">
+      <button class="btn ghost on" data-f="all">All</button>
+      <button class="btn ghost" data-f="bad">Wrong</button>
+      <button class="btn ghost" data-f="ok">Correct</button>
+      <button class="btn" id="again" style="margin-left:auto">Try again (new order)</button>
+    </div>
+    <div id="list"></div>
+  </section>
+</div>
+
+<script>
+/* [question, [options], index of correct option] */
+const Q=[
+/* FC1 - Postmortem chemistry */
+["A body is recovered from a river after several days. To evaluate antemortem alcohol intake, which postmortem sampling strategy and chemical test combination is most appropriate to minimize artifacts from putrefaction and environmental contamination?",
+ ["Liver tissue ethanol estimation by homogenization alone","Peripheral venous blood ethanol estimation from a femoral vein","Urine ethanol estimation without any other matrix","Vitreous humor ethanol estimation, ideally compared with peripheral blood","Central cardiac blood ethanol estimation only"],3],
+["Which postmortem biochemical change in vitreous humor is most useful for estimating the antemortem glycemic status in a person with suspected diabetes mellitus at the time of death?",
+ ["Vitreous chloride concentration trend","Vitreous urea level as a marker of renal function","Absolute sodium concentration in vitreous humor","Vitreous lactate concentration alone","Vitreous glucose and beta-hydroxybutyrate levels interpreted together"],4],
+["In the early postmortem interval, which biochemical change in cerebrospinal fluid (CSF) or vitreous humor is most helpful in estimating the time since death (postmortem interval) under relatively stable environmental conditions?",
+ ["Progressive, approximately linear increase in vitreous potassium concentration","Rapid early decrease followed by a plateau in vitreous potassium concentration","Irregular oscillations in vitreous sodium concentration","Stable, unchanging vitreous electrolytes throughout the postmortem period","Linear increase in CSF total protein concentration"],0],
+
+/* FC2 - Workplace testing */
+["Which analytical method is considered the gold standard for confirming a positive workplace drug screening result?",
+ ["Enzyme-linked immunoassay (ELISA)","Thin-layer chromatography (TLC)","Gas chromatography-mass spectrometry (GC-MS)","Ultraviolet spectrophotometry","Complete blood count (CBC)"],2],
+["Which type of workplace testing is performed when there are observable signs suggesting an employee may be impaired by substances?",
+ ["Random testing","Pre-employment testing","Follow-up testing","Reasonable suspicion testing","Return-to-duty testing"],3],
+["The primary purpose of maintaining a chain of custody during workplace testing is to:",
+ ["Determine the degree of employee impairment.","Reduce the cost of laboratory investigations.","Ensure the integrity and legal defensibility of specimens.","Shorten the turnaround time for test results.","Increase the sensitivity of screening tests."],2],
+
+/* FC3 - Violent asphyxia */
+["The surest sign of antemortem hanging is:",
+ ["Cyanosis","Ligature mark","Dribbling of saliva","Fracture of hyoid bone","Petechiae"],2],
+["Ligature mark in strangulation is:",
+ ["Oblique","Above thyroid","Non-continuous","Transverse","Pale"],3],
+["Washerwoman's hand appears after:",
+ ["1–2 hrs","6 hrs","12–18 hrs","24 hrs","3 days"],2],
+["Smothering refers to:",
+ ["Internal airway obstruction","Neck compression","Obstruction of the mouth and nostrils","Chest compression","Drowning"],2],
+["Traumatic asphyxia results from:",
+ ["Muscle paralysis","Chest compression is preventing respiration","Neck ligature","Water inhalation","Brain injury"],1],
+["Fine white froth in drowning is due to:",
+ ["Putrefaction","Blood only","Mixture of air, water and mucus","Saliva","Fat"],2],
+
+/* Child abuse */
+["Which is the most common type of child maltreatment?",
+ ["Physical abuse","Sexual abuse","Neglect","Psychological abuse","Munchausen syndrome by proxy"],2],
+["A bruise on which site is highly suggestive of abuse?",
+ ["Forehead","Elbow","Shin","Buttocks","Knee"],3],
+["The leading cause of death in child abuse is:",
+ ["Burns","Fractures","Head trauma","Abdominal injury","Neglect"],2],
+["An intercanine bite mark distance of ≥3 cm usually indicates:",
+ ["Animal bite","Child bite","Adult bite","Insect bite","Self-inflicted bite"],2],
+["Which fracture is particularly suspicious for child abuse?",
+ ["Clavicle fracture","Posterior rib fracture","Nasal fracture","Finger fracture","Patellar fracture"],1],
+
+/* FC5 - QA / QC in toxicology */
+["Quality Assurance in a toxicology laboratory is best defined as:",
+ ["Daily testing of a blank sample only","A planned system to ensure laboratory work meets required standards","Repeating every positive sample three times","The legal form used for sample transfer","A method used only after a test fails"],1],
+["The focus of Quality Assurance is to:",
+ ["Detect only analytical errors","Prevent errors and maintain high laboratory standards","Replace external accreditation","Confirm one specific drug result","Eliminate the need for documentation"],1],
+["Which of the following is an example of an SOP content area?",
+ ["Sample collection and storage","Court verdict","Patient diagnosis alone","Instrument purchase price","Staff annual leave schedule"],0],
+["Equipment maintenance in QA commonly includes all EXCEPT:",
+ ["Regular calibration","Preventive maintenance","Performance verification","Ignoring minor instrument alarms","Documentation of maintenance activities"],3],
+["The chain of custody is especially important in forensic toxicology because it:",
+ ["Improves the taste of the sample","Documents sample handling and transfer","Replaces analytical validation","Measures drug concentration directly","Prevents all biological degradation"],1],
+["Which statement best compares QA and QC?",
+ ["QA detects errors only; QC prevents all errors","QA is system-oriented and preventive; QC is test-oriented and corrective","QA and QC are identical terms","QC covers all administrative and legal activities only","QA is used only in environmental toxicology"],1],
+
+/* FC6 - Spectrophotometry */
+["What component of a spectrophotometer is responsible for isolating a narrow band of wavelengths from the light source?",
+ ["Collimator lens","Monochromator and slit","Photocell detector","Sample cuvette","Digital meter"],1],
+["Which cuvette/optical material is required when measuring light absorption in the Ultraviolet (UV) range (185–400 nm)?",
+ ["Silicate glass","Standard plastic","Fused silica or quartz","Corex glass","Sodium chloride (NaCl)"],2],
+["How is Absorbance (A) mathematically related to Transmittance (T, as a fraction)?",
+ ["A = 1 / T","A = -log10(T)","A = log10(1 - T)","A = T * 100","A = -ln(1 / T)"],1],
+["In the Beer-Lambert Law (A = ε · c · l), what are the standard units for the molar absorption coefficient (ε)?",
+ ["g / (L · cm)","M⁻¹ · cm⁻¹","mol / L","cm / M","Absorbance units / nm"],1],
+["Which of the following factors does NOT affect the molar absorptivity (ε) of a chemical compound?",
+ ["Chemical identity of the compound","Type of solvent used","pH of the solution","Temperature","Total volume of solution in the cuvette"],4],
+["Which type of spectrophotometry is specifically designed for elemental analysis by measuring absorption by free ground-state atoms?",
+ ["UV-Vis Spectrophotometry","Infrared (IR) Spectrophotometry","Atomic Absorption Spectrophotometry","Nuclear Magnetic Resonance (NMR)","Mass Spectrometry"],2],
+
+/* FC7 - Forensic immunoassays */
+["The urine specimen gives a positive immunoassay screening result for a drug. Subsequent GC-MS analysis fails to detect the target drug. Which explanation is most consistent with the limitations of immunoassays?",
+ ["The antibody cannot bind structurally related compounds","Cross-reactivity with a structurally related compound produced a false positive result","Immunoassays are inherently quantitative and therefore cannot produce false positives","GC-MS is less specific than immunoassay","The positive immunoassay result establishes definitive drug identification"],1],
+["A forensic laboratory is investigating a suspected seminal stain. The initial screening test detects prostate-specific antigen (PSA). Which interpretation is most appropriate?",
+ ["PSA is absolutely specific for spermatozoa","PSA supports the identification of seminal fluid and should be interpreted with other evidence","PSA confirms the presence of male DNA","PSA establishes the species origin of the stain without further testing","PSA is primarily a marker of saliva"],1],
+["A forensic toxicology immunoassay is being validated before routine casework. Which combination of parameters is most appropriate to establish the analytical performance of the assay?",
+ ["Color intensity, sample volume, and centrifugation speed only","Sensitivity, specificity, detection limit, cross-reactivity, and reproducibility","DNA profile, microscopic findings, and chain of custody only","Radioactive decay, antibody concentration, and specimen weight only","Patient age, sex, and clinical diagnosis"],1],
+["A blood-stain screening assay produces a positive result for human hemoglobin. The investigator then proceeds to DNA analysis. What is the primary forensic significance of the immunoassay result?",
+ ["It provides the complete DNA profile of the donor","It definitively establishes the identity of the individual","It helps identify the body fluid and guides subsequent DNA analysis","It determines whether the blood was collected ante-mortem or postmortem","It replaces molecular genetic testing"],2],
+["A specimen contains a very high concentration of the target analyte, but the immunoassay unexpectedly produces a negative result. Which phenomenon described in the lecture could explain this finding?",
+ ["Cross-reactivity","Reagent blank effect","High-dose hook effect","Species-specific antibody reaction","Chemiluminescence amplification"],2],
+["A forensic laboratory chooses between radioimmunoassay and chemiluminescent immunoassay for detecting very low concentrations of a toxic substance. Which statement best explains the current preference for chemiluminescent immunoassays?",
+ ["Radioimmunoassays lack analytical sensitivity","Chemiluminescent assays do not depend on antigen–antibody interactions","Radioimmunoassays have declined partly because of radiation hazards and waste-disposal requirements, while chemiluminescent assays provide high sensitivity","Chemiluminescent assays are confirmatory techniques that eliminate the need for instrumental analysis","Radioimmunoassays cannot detect drugs or toxins"],2],
+
+/* FC8 - Gas chromatography */
+["Which of the following is the mobile phase in gas chromatography?",
+ ["Stationary phase","Inert carrier gas","Solid support","Detector response","Column packing"],1],
+["Where does the sample undergo vaporization in a gas chromatograph?",
+ ["Detector","Column outlet","Injector port","Stationary phase","Chromatogram"],2],
+["Which detector is described as highly sensitive and specific and is used in toxicology and forensic medicine?",
+ ["TCD","FID","GC-MS","UV detector","pH detector"],2],
+["In a GC chromatogram, what does the X-axis represent?",
+ ["Peak area","Detector response","Concentration only","Retention time","Molecular weight"],3],
+["Which of the following is a factor affecting separation in gas chromatography?",
+ ["Column temperature","Patient age","Blood pressure","Sample color","Room lighting"],0],
+["Which statement best describes GC-MS?",
+ ["GC is used for identification and MS only for vaporization","GC separates compounds and MS helps identify them","Both GC and MS are used only for environmental testing","MS replaces the chromatographic column","GC-MS is used only for nonvolatile compounds"],1],
+
+/* FC9 - HPLC */
+["The fundamental principle responsible for separation in HPLC is:",
+ ["Differential distribution of analytes between mobile and stationary phases","Conversion of all analytes into volatile gases","Separation exclusively according to molecular weight","Ionization of every analyte before injection","Thermal decomposition of analytes inside the column"],0],
+["Which statement BEST describes reversed-phase HPLC?",
+ ["Polar stationary phase and non-polar mobile phase","Non-polar stationary phase and comparatively polar mobile phase","Separation only according to hydrodynamic size","Separation based exclusively on ligand–analyte affinity","Charged stationary phase must always be used"],1],
+["In forensic toxicology, why is retention time alone generally insufficient for definitive identification?",
+ ["Retention time is never reproducible","Retention time cannot be measured by HPLC","Different compounds may require additional evidence for specific identification","Retention time measures only detector sensitivity","Retention time is unrelated to chromatographic separation"],2],
+["Which sample-preparation method is particularly useful for efficient cleanup and concentration of complex biological matrices?",
+ ["Simple dilution only","Protein precipitation only","Solid-phase extraction","Direct injection of untreated blood","Evaporation without extraction"],2],
+["Which HPLC detector provides molecular and structural information and is particularly valuable when high analytical specificity is required?",
+ ["Refractive index detector","UV detector","Fluorescence detector","Mass spectrometric detector","Visual inspection of the chromatogram"],3],
+["A forensic HPLC analysis detects a drug concentration in a postmortem blood specimen. Which conclusion is MOST scientifically appropriate?",
+ ["The concentration automatically proves the drug caused death","The concentration automatically proves impairment before death","The analytical result should be interpreted with specimen and case context","Chain of custody is irrelevant if the chromatogram is clear","Postmortem redistribution can always be ignored"],2],
+
+/* FC10 - Electrophoresis */
+["Which statement best explains why smaller DNA fragments migrate faster through agarose gel?",
+ ["They carry no electrical charge","They pass more easily through agarose pores","They bind strongly to the gel","They become positively charged","They have greater molecular weight"],1],
+["What is the main effect of SDS in SDS-PAGE?",
+ ["Gives proteins a relatively uniform negative charge","Gives proteins a positive charge","Prevents protein migration","Converts proteins into DNA","Makes all proteins retain their native structure"],0],
+["Which technique is described as rapid, automated, and high-resolution?",
+ ["Paper electrophoresis","Native PAGE","Capillary electrophoresis","Agarose electrophoresis","Immunoelectrophoresis"],2],
+["Serum protein electrophoresis separates serum proteins into all of the following EXCEPT:",
+ ["Albumin","Alpha-1 globulin","Beta globulin","Gamma globulin","Hemoglobin S"],4],
+["Which electrophoresis technique is particularly useful for identifying abnormal hemoglobins such as HbS and HbC?",
+ ["Hemoglobin electrophoresis","SDS-PAGE","DNA laddering","Capillary protein staining only","Paper chromatography"],0],
+["Which factor can affect electrophoretic migration according to the provided note?",
+ ["Gel concentration","Patient age only","Blood group only","Room lighting only","Sample color only"],0]
+];
+const L="ABCD E".replace(" ","");
+const $=id=>document.getElementById(id);
+let order,idx,answers,perm;
+
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+
+function start(){
+  fxRun++;$("fx").getContext("2d").clearRect(0,0,$("fx").width,$("fx").height);
+  order=shuffle(Q.map((_,i)=>i));idx=0;answers=[];
+  perm=Q.map(q=>{
+    const all=q[1].map((_,i)=>i);
+    const pin=all.filter(i=>/all are correct/i.test(q[1][i]));
+    return shuffle(all.filter(i=>!pin.includes(i))).concat(pin);
+  });
+  $("result").classList.add("hide");$("quiz").classList.remove("hide");$("barWrap").classList.remove("hide");
+  show();window.scrollTo(0,0);
+}
+
+function show(){
+  const q=Q[order[idx]];
+  $("count").textContent=`Question ${idx+1} of ${Q.length}`;
+  $("bar").style.width=(idx/Q.length*100)+"%";
+  $("q").textContent=q[0];
+  $("fb").textContent="";$("fb").className="fb";
+  $("next").classList.add("hide");
+  const box=$("opts");box.innerHTML="";
+  perm[order[idx]].forEach((orig,pos)=>{
+    const b=document.createElement("button");b.className="opt";
+    b.innerHTML=`<b>${L[pos]}</b><span></span>`;b.lastChild.textContent=q[1][orig];
+    b.onclick=()=>pick(pos);box.appendChild(b);
+  });
+}
+
+function pick(pos){
+  const qi=order[idx],q=Q[qi],p=perm[qi];
+  const i=p[pos],right=q[2],rightPos=p.indexOf(right);
+  answers.push({qi,pick:i,pos,perm:p.slice()});
+  [...$("opts").children].forEach((b,k)=>{
+    b.disabled=true;
+    if(k===rightPos)b.classList.add("ok");
+    else if(k===pos)b.classList.add("bad");
+  });
+  const fb=$("fb");
+  if(i===right){fb.textContent="Correct";fb.classList.add("ok")}
+  else{fb.textContent=`Wrong. Correct answer: ${L[rightPos]}. ${q[1][right]}`;fb.classList.add("bad")}
+  const n=$("next");n.textContent=idx===Q.length-1?"See results":"Next question";
+  n.classList.remove("hide");n.focus();
+}
+
+$("next").onclick=()=>{
+  if(idx<Q.length-1){idx++;show()}else finish();
+};
+
+function finish(){
+  $("quiz").classList.add("hide");$("barWrap").classList.add("hide");
+  $("count").textContent="Finished";
+  const good=answers.filter(a=>a.pick===Q[a.qi][2]).length;
+  const pct=Math.round(good/Q.length*100);
+  $("scoreP").textContent=`${pct}% correct, ${Q.length-good} wrong`;
+  $("msg").textContent=pct===100?"Perfect score!":pct>=80?"Excellent work!":pct>=60?"Good job, keep going!":pct>=50?"Passed. Review the wrong ones.":"Keep practicing, you'll get there.";
+  $("result").classList.remove("hide");
+  const n=$("scoreN");n.classList.remove("pop");void n.offsetWidth;n.classList.add("pop");
+  countUp(n,good);
+  render("all");window.scrollTo(0,0);
+  celebrate(pct);
+}
+
+function countUp(el,to){
+  if(matchMedia("(prefers-reduced-motion:reduce)").matches||to===0){el.textContent=`${to} / ${Q.length}`;return}
+  const t0=performance.now(),D=1200;
+  (function f(t){const p=Math.min(1,(t-t0)/D);el.textContent=`${Math.round(to*p)} / ${Q.length}`;if(p<1)requestAnimationFrame(f)})(t0);
+}
+
+let fxRun=0;
+function celebrate(pct){
+  const cv=$("fx"),c=cv.getContext("2d");
+  const run=++fxRun;
+  c.clearRect(0,0,cv.width,cv.height);
+  if(pct<50||matchMedia("(prefers-reduced-motion:reduce)").matches)return;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=innerWidth*dpr;cv.height=innerHeight*dpr;c.scale(dpr,dpr);
+  const W=innerWidth,H=innerHeight,cols=["#0f766e","#f59e0b","#ef4444","#3b82f6","#a855f7","#22c55e","#ec4899"];
+  const P=[],t0=performance.now();
+  const dur=pct>=80?6000:3500;
+  const nConf=Math.round(60+pct*1.4);
+  for(let i=0;i<nConf;i++)P.push({k:"c",x:Math.random()*W,y:-20-Math.random()*H*.6,vx:(Math.random()-.5)*2,vy:2+Math.random()*3.5,w:6+Math.random()*6,h:4+Math.random()*5,r:Math.random()*6,vr:(Math.random()-.5)*.3,col:cols[i%cols.length],life:1});
+  function burst(x,y){
+    const col=cols[Math.floor(Math.random()*cols.length)],n=70;
+    for(let i=0;i<n;i++){const a=Math.PI*2*i/n,sp=2+Math.random()*4.5;
+      P.push({k:"f",x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,col,life:1,s:2.2})}
+  }
+  let nextB=0;
+  (function frame(now){
+    if(run!==fxRun)return;
+    const el=now-t0;
+    c.clearRect(0,0,W,H);
+    if(pct>=80&&el<dur-1500&&el>=nextB){burst(W*(.15+Math.random()*.7),H*(.12+Math.random()*.38));nextB=el+450+Math.random()*350}
+    for(let i=P.length-1;i>=0;i--){
+      const p=P[i];
+      if(p.k==="c"){p.x+=p.vx+Math.sin(p.y/30);p.y+=p.vy;p.r+=p.vr;if(el>dur)p.life-=.02;
+        c.save();c.globalAlpha=Math.max(p.life,0);c.translate(p.x,p.y);c.rotate(p.r);c.fillStyle=p.col;c.fillRect(-p.w/2,-p.h/2,p.w,p.h);c.restore();
+        if(p.y>H+20||p.life<=0)P.splice(i,1);
+      }else{p.vy+=.06;p.vx*=.985;p.x+=p.vx;p.y+=p.vy;p.life-=.014;
+        c.globalAlpha=Math.max(p.life,0);c.fillStyle=p.col;c.beginPath();c.arc(p.x,p.y,p.s,0,7);c.fill();c.globalAlpha=1;
+        if(p.life<=0)P.splice(i,1);}
+    }
+    if(P.length||el<dur)requestAnimationFrame(frame);else c.clearRect(0,0,W,H);
+  })(t0);
+}
+
+function render(f){
+  document.querySelectorAll("#filters [data-f]").forEach(b=>b.classList.toggle("on",b.dataset.f===f));
+  const list=$("list");list.innerHTML="";
+  answers.forEach((a,n)=>{
+    const q=Q[a.qi],ok=a.pick===q[2];
+    if(f==="ok"&&!ok||f==="bad"&&ok)return;
+    const d=document.createElement("div");d.className="item"+(ok?"":" bad");
+    const h=document.createElement("h3");h.textContent=`${n+1}. ${q[0]}`;d.appendChild(h);
+    const y=document.createElement("div");
+    y.innerHTML=`Your answer: <span class="${ok?"tag-ok":"tag-bad"}"></span>`;
+    y.lastChild.textContent=`${L[a.pos]}. ${q[1][a.pick]}`;d.appendChild(y);
+    if(!ok){const c=document.createElement("div");c.innerHTML=`Correct answer: <span class="tag-ok"></span>`;
+      c.lastChild.textContent=`${L[a.perm.indexOf(q[2])]}. ${q[1][q[2]]}`;d.appendChild(c)}
+    list.appendChild(d);
+  });
+  if(!list.children.length)list.innerHTML='<p style="color:var(--mute)">Nothing to show here.</p>';
+}
+
+document.querySelectorAll("#filters [data-f]").forEach(b=>b.onclick=()=>render(b.dataset.f));
+$("again").onclick=start;
+start();
+</script>
+</body>
+</html>
